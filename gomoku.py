@@ -1,4 +1,6 @@
-"""Freestyle Gomoku rules and a depth-limited alpha-beta opponent."""
+"""Freestyle Gomoku rules and two computer move selectors."""
+
+from heapq import heappop, heappush
 
 SIZE = 15
 HUMAN, COMPUTER = 1, -1
@@ -72,17 +74,71 @@ def winning_move(board, row, col, player):
     return any(length >= 5 for length, _ in _lines(board, row, col, player))
 
 
-def _candidates(board, player):
-    occupied = [(r, c) for r in range(SIZE) for c in range(SIZE) if board[r][c]]
-    if not occupied:
-        return [(SIZE // 2, SIZE // 2)]
+def _neighbors(row, col):
+    for r in range(max(0, row - 1), min(SIZE, row + 2)):
+        for c in range(max(0, col - 1), min(SIZE, col + 2)):
+            if (r, c) != (row, col):
+                yield r, c
 
-    nearby = set()
-    for row, col in occupied:
-        for r in range(max(0, row - 1), min(SIZE, row + 2)):
-            for c in range(max(0, col - 1), min(SIZE, col + 2)):
-                if board[r][c] == 0:
-                    nearby.add((r, c))
+
+def _nearby(board):
+    return {
+        (r, c)
+        for row in range(SIZE)
+        for col in range(SIZE)
+        if board[row][col]
+        for r, c in _neighbors(row, col)
+        if board[r][c] == 0
+    }
+
+
+def a_star_search(game, expansion_limit):
+    """Revisit the archive's best-first search over empty intersections."""
+    if game.finished or game.turn != COMPUTER:
+        return None
+    if expansion_limit < 1:
+        raise ValueError("The search must examine at least one candidate.")
+    if not game.history:
+        return SIZE // 2, SIZE // 2
+
+    frontier = []
+    queued = set()
+    board = game.board
+
+    def enqueue(row, col):
+        if board[row][col] or (row, col) in queued:
+            return
+        queued.add((row, col))
+        attack = _move_score(board, row, col, COMPUTER)
+        defense = _move_score(board, row, col, HUMAN)
+        # Wins come first, then blocks, then the weighted positional score.
+        priority = 0 if attack == WIN_SCORE else 1 if defense == WIN_SCORE else 2
+        score = 10 * attack + defense
+        distance = abs(row - SIZE // 2) + abs(col - SIZE // 2)
+        heappush(frontier, (priority, -score, distance, row, col))
+
+    for row, col in _nearby(board):
+        enqueue(row, col)
+
+    best = None
+    for step in range(expansion_limit):
+        if not frontier:
+            break
+        entry = heappop(frontier)
+        if best is None or entry < best:
+            best = entry
+        if entry[0] == 0 or step + 1 == expansion_limit:
+            break
+        for row, col in _neighbors(*entry[-2:]):
+            enqueue(row, col)
+
+    return best[-2:] if best is not None else None
+
+
+def _candidates(board, player):
+    nearby = _nearby(board)
+    if not nearby:
+        return [(SIZE // 2, SIZE // 2)]
 
     def priority(move):
         row, col = move

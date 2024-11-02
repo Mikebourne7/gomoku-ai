@@ -2,12 +2,14 @@
 import tkinter as tk
 from tkinter import ttk
 
-from gomoku import COMPUTER, HUMAN, SIZE, Game, computer_move
+from gomoku import COMPUTER, HUMAN, SIZE, Game, a_star_search, computer_move
 
 GRID = 33
 MARGIN = 22
 EDGE = 2 * MARGIN + (SIZE - 1) * GRID
-MODES = {"Easy": 1, "Standard": 2, "Hard": 3}
+MODES = {"Easy": (1, 1), "Standard": (68, 2), "Hard": (SIZE * SIZE, 3)}
+BEST_FIRST = "A*-style"
+MINIMAX = "Minimax"
 
 
 class GomokuWindow:
@@ -16,6 +18,7 @@ class GomokuWindow:
         self.game = Game()
         self.pending_move = None
         self.difficulty = tk.StringVar(value="Standard")
+        self.algorithm = tk.StringVar(value=BEST_FIRST)
         self.status = tk.StringVar()
         root.title("Gomoku")
         root.resizable(False, False)
@@ -30,6 +33,10 @@ class GomokuWindow:
             state="readonly", width=10,
         ).pack(side="right")
         ttk.Label(controls, text="Difficulty").pack(side="right", padx=8)
+        ttk.Combobox(
+            controls, textvariable=self.algorithm, values=[BEST_FIRST, MINIMAX],
+            state="readonly", width=10,
+        ).pack(side="right")
 
         self.canvas = tk.Canvas(root, width=EDGE, height=EDGE, background="#dcb578",
                                 borderwidth=0, highlightthickness=0)
@@ -87,7 +94,11 @@ class GomokuWindow:
     def play_computer(self):
         self.pending_move = None
         if self.game.turn == COMPUTER and not self.game.finished:
-            move = computer_move(self.game, MODES[self.difficulty.get()])
+            expansions, depth = MODES[self.difficulty.get()]
+            if self.algorithm.get() == BEST_FIRST:
+                move = a_star_search(self.game, expansions)
+            else:
+                move = computer_move(self.game, depth)
             if move is not None:
                 self.game.play(*move)
             self.draw()
